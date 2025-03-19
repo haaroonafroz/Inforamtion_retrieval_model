@@ -1,0 +1,12 @@
+{
+  "top_5": {
+    "precision": 0.8,
+    "recall": 0.8,
+    "f1": 0.8
+  },
+  "top_10": {
+    "precision": 0.8,
+    "recall": 0.8,
+    "f1": 0.8
+  }
+}

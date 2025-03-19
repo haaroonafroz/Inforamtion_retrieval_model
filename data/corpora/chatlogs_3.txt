@@ -1,0 +1,17 @@
+User: My account is showing incorrect balance.
+Support: I'm sorry to hear about the balance issue. Please provide your account number and the last transaction you made. We'll investigate the issue and get back to you within 24 hours.
+
+User: I can't download the latest update.
+Support: Let's troubleshoot this issue. First, check your internet connection. Then, make sure you have enough storage space on your device. If the problem persists, try uninstalling and reinstalling the app.
+
+User: How do I upgrade my subscription?
+Support: To upgrade your subscription, go to your account settings and click on 'Subscription'. You'll see an 'Upgrade' button next to your current plan. Click on it and follow the instructions to complete the upgrade.
+
+User: I can't download the latest update.
+Support: Let's troubleshoot this issue. First, check your internet connection. Then, make sure you have enough storage space on your device. If the problem persists, try uninstalling and reinstalling the app.
+
+User: I can't download the latest update.
+Support: Let's troubleshoot this issue. First, check your internet connection. Then, make sure you have enough storage space on your device. If the problem persists, try uninstalling and reinstalling the app.
+
+User: I can't download the latest update.
+Support: Let's troubleshoot this issue. First, check your internet connection. Then, make sure you have enough storage space on your device. If the problem persists, try uninstalling and reinstalling the app.
