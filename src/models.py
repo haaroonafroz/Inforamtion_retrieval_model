@@ -1,10 +1,11 @@
 import os
+import logging
 from typing import List, Dict, Any, Union, Optional
 import numpy as np
 import torch
+import requests
 from transformers import AutoTokenizer, AutoModel
 from sentence_transformers import SentenceTransformer
-import logging
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -51,82 +52,92 @@ class SentenceTransformerEmbedding(EmbeddingModel):
         return embedding.tolist() if isinstance(embedding, np.ndarray) else embedding
 
 
-class OpenAIEmbeddingModel(EmbeddingModel):
-    """Embedding model using OpenAI's API"""
+class HuggingFaceAPIEmbedding(EmbeddingModel):
+    """Embedding model using Hugging Face Inference API"""
     
-    def __init__(self, model_name: str = "text-embedding-3-small", api_key: Optional[str] = None):
+    def __init__(self, model_name: str = "BAAI/bge-large-en-v1.5", api_key: Optional[str] = None):
         super().__init__()
         self.model_name = model_name
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.api_key = api_key or os.getenv("HF_API_KEY")
         
         if not self.api_key:
-            raise ValueError("OpenAI API key must be provided or set as OPENAI_API_KEY environment variable")
+            raise ValueError("Hugging Face API key must be provided or set as HF_API_KEY environment variable")
         
-        logger.info(f"Initializing OpenAI embedding model: {model_name}")
-        
-        # Import here to make this optional
-        try:
-            from openai import OpenAI
-            self.client = OpenAI(api_key=self.api_key)
-        except ImportError:
-            logger.error("Failed to import openai package. Please install with: pip install openai")
-            raise
+        logger.info(f"Initializing Hugging Face API embedding model: {model_name}")
         
         # Set dimension based on the model
-        if model_name == "text-embedding-3-small":
-            self.dimension = 1536
-        elif model_name == "text-embedding-3-large":
-            self.dimension = 3072
-        elif model_name == "text-embedding-ada-002":
-            self.dimension = 1536
+        if "bge-large" in model_name:
+            self.dimension = 1024
+        elif "e5-large" in model_name:
+            self.dimension = 1024
+        elif "gte-large" in model_name:
+            self.dimension = 1024
         else:
-            # Default dimension, this might not be accurate for all models
-            self.dimension = 1536
+            # Default to 768 for most models
+            self.dimension = 384
             
-        logger.info(f"OpenAI model initialized with dimension: {self.dimension}")
+        logger.info(f"Hugging Face model initialized with dimension: {self.dimension}")
+        
+        # API endpoint
+        self.api_url = f"https://api-inference.huggingface.co/models/{model_name}"
+        self.headers = {"Authorization": f"Bearer {self.api_key}"}
+    
+    def _get_embeddings(self, texts: Union[str, List[str]]) -> Union[List[float], List[List[float]]]:
+        """Get embeddings from Hugging Face Inference API"""
+        is_single = isinstance(texts, str)
+        payload = {"inputs": texts if is_single else texts}
+        
+        # Add model-specific parameters
+        if "bge" in self.model_name:
+            # BGE models work best with specific parameters
+            payload["options"] = {"wait_for_model": True}
+        elif "e5" in self.model_name:
+            # E5 models need query/passage prefix
+            if is_single:
+                payload["inputs"] = "query: " + texts
+            else:
+                payload["inputs"] = ["query: " + t for t in texts]
+        
+        try:
+            response = requests.post(self.api_url, headers=self.headers, json=payload)
+            response.raise_for_status()  # Raise exception for error status codes
+            result = response.json()
+            
+            if isinstance(result, list) and all(isinstance(item, list) for item in result):
+                return result
+            elif isinstance(result, list) and all(isinstance(item, float) for item in result):
+                return result
+            else:
+                raise ValueError(f"Unexpected API response format: {result}")
+        except Exception as e:
+            logger.error(f"Error calling Hugging Face API: {str(e)}")
+            raise
     
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """Generate embeddings for a list of documents"""
-        logger.debug(f"Embedding {len(texts)} documents with OpenAI")
+        logger.debug(f"Embedding {len(texts)} documents with Hugging Face API")
         
-        # Process in batches to avoid rate limits
-        batch_size = 20
+        # Process in batches to avoid API limits
+        batch_size = 8  # Smaller batch size for API calls
         all_embeddings = []
         
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i+batch_size]
             logger.debug(f"Processing batch {i//batch_size + 1}/{(len(texts)-1)//batch_size + 1}")
             
-            try:
-                response = self.client.embeddings.create(
-                    model=self.model_name,
-                    input=batch
-                )
-                batch_embeddings = [item.embedding for item in response.data]
-                all_embeddings.extend(batch_embeddings)
-            except Exception as e:
-                logger.error(f"Error generating embeddings: {str(e)}")
-                raise
+            batch_embeddings = self._get_embeddings(batch)
+            all_embeddings.extend(batch_embeddings)
         
         return all_embeddings
     
     def embed_query(self, query: str) -> List[float]:
         """Generate embedding for a query string"""
-        logger.debug(f"Embedding query with OpenAI: {query[:50]}...")
-        
-        try:
-            response = self.client.embeddings.create(
-                model=self.model_name,
-                input=[query]
-            )
-            return response.data[0].embedding
-        except Exception as e:
-            logger.error(f"Error generating query embedding: {str(e)}")
-            raise
+        logger.debug(f"Embedding query with Hugging Face API: {query[:50]}...")
+        return self._get_embeddings(query)
 
 
 class CustomTransformerEmbedding(EmbeddingModel):
-    """Custom implementation of transformer-based embeddings"""
+    """Custom implementation of transformer-based embeddings using local models"""
     
     def __init__(self, model_name: str = "intfloat/e5-small-v2"):
         super().__init__()
@@ -294,7 +305,7 @@ def create_embedding_model(model_type: str = "sentence_transformer", **kwargs) -
     Factory function to create an embedding model
     
     Args:
-        model_type: Type of embedding model ("sentence_transformer", "openai", "custom")
+        model_type: Type of embedding model ("sentence_transformer", "huggingface_api", "custom")
         **kwargs: Additional arguments for the specific model
     
     Returns:
@@ -306,10 +317,10 @@ def create_embedding_model(model_type: str = "sentence_transformer", **kwargs) -
         model_name = kwargs.get("model_name", "all-MiniLM-L6-v2")
         return SentenceTransformerEmbedding(model_name=model_name)
     
-    elif model_type == "openai":
-        model_name = kwargs.get("model_name", "text-embedding-3-small")
+    elif model_type == "huggingface_api":
+        model_name = kwargs.get("model_name", "BAAI/bge-large-en-v1.5")
         api_key = kwargs.get("api_key", None)
-        return OpenAIEmbeddingModel(model_name=model_name, api_key=api_key)
+        return HuggingFaceAPIEmbedding(model_name=model_name, api_key=api_key)
     
     elif model_type == "custom":
         model_name = kwargs.get("model_name", "intfloat/e5-small-v2")

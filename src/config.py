@@ -15,8 +15,8 @@ DEFAULT_CONFIG = {
     "max_chunk_gap": 2,  # Maximum line gap for merging adjacent chunks
     
     # Embedding model settings
-    "embedding_model_type": "sentence_transformer",  # Options: "sentence_transformer", "openai", "custom"
-    "embedding_model": "all-MiniLM-L6-v2",  # Default model name
+    "embedding_model_type": "huggingface_api",  # Options: "sentence_transformer", "huggingface_api", "custom"
+    "embedding_model": "BAAI/bge-large-en-v1.5",  # Default model name
     "use_classifier": False,  # Whether to use section classifier
     
     # Vector DB settings
@@ -45,10 +45,13 @@ DEFAULT_CONFIG = {
         "core competencies": "Skills",
         "key skills": "Skills",
         "expertise": "Skills",
+        "technical expertise": "Skills",
         
         "projects": "Projects",
         "personal projects": "Projects",
         "project experience": "Projects",
+        "academic projects": "Projects",
+        "research projects": "Projects",
         
         "certifications": "Certifications",
         "certificates": "Certifications",
@@ -58,9 +61,13 @@ DEFAULT_CONFIG = {
         "papers": "Publications",
         "articles": "Publications",
         "research": "Publications",
+        "publications and research": "Publications",
+        "journal publications": "Publications",
         
         "languages": "Languages",
         "language proficiency": "Languages",
+        "language skills": "Languages",
+        "proficiency in": "Languages",
         
         "interests": "Interests",
         "hobbies": "Interests",
@@ -71,6 +78,8 @@ DEFAULT_CONFIG = {
         "profile": "Summary",
         "objective": "Summary",
         "about me": "Summary",
+        "career objective": "Summary",
+        "about": "Summary",
         
         "achievements": "Achievements",
         "accomplishments": "Achievements",
@@ -87,6 +96,9 @@ DEFAULT_CONFIG = {
         "contact information": "Contact",
         "personal information": "Contact",
         "personal details": "Contact",
+        "contact details": "Contact",
+        "contact information": "Contact",
+        "personal information": "Contact"
     }
 }
 
@@ -121,6 +133,27 @@ def load_config(config_path: str = None) -> Dict[str, Any]:
         except Exception as e:
             print(f"Error loading config from {config_path}: {str(e)}")
             print("Using default configuration")
+    
+    # Load from environment variables
+    env_mappings = {
+        "EMBEDDING_MODEL_TYPE": "embedding_model_type",
+        "EMBEDDING_MODEL": "embedding_model",
+        "EMBEDDING_MODEL_BGE": "embedding_model_bge",
+        "EMBEDDING_MODEL_E5LARGE": "embedding_model_e5large",
+        "VECTOR_STORE_TYPE": "vector_store_type",
+        "VECTOR_STORE_DIR": "vector_store_directory",
+        "OUTPUT_DIR": "output_directory",
+        "LOG_LEVEL": "log_level",
+        "DEBUG": "debug"
+    }
+    
+    for env_var, config_key in env_mappings.items():
+        if os.getenv(env_var):
+            if env_var == "DEBUG":
+                # Convert string to boolean
+                config[config_key] = os.getenv(env_var).lower() == "true"
+            else:
+                config[config_key] = os.getenv(env_var)
     
     return config
 

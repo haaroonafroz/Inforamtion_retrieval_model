@@ -9,7 +9,7 @@ tqdm>=4.62.3     # For progress bars
 sentence-transformers>=2.2.2
 torch>=1.10.0    # Required by sentence-transformers
 transformers>=4.18.0
-openai>=1.10.0   # For OpenAI embeddings
+requests>=2.27.1  # For API calls
 
 # Vector databases
 chromadb>=0.4.10  # Vector database
@@ -27,7 +27,6 @@ streamlit>=1.28.0
 
 # Utilities
 python-dotenv>=0.20.0
-requests>=2.27.1
 rich>=12.0.0
 typer>=0.9.0     # CLI interface
 
@@ -39,7 +38,10 @@ isort>=5.10.1
 flake8>=4.0.1
 mypy>=0.942
 
-# Optional: Layout-aware parsing
-# unstructured>=0.11.0
-# pdf2image>=1.16.0
-# pytesseract>=0.3.10
+# Layout-aware parsing
+pdfplumber>=0.10.0  # For layout extraction
+pillow>=9.0.1
+opencv-python>=4.5.5
+pytesseract>=0.3.10
+# If installing on Linux, also run:
+# apt-get install tesseract-ocr libtesseract-dev

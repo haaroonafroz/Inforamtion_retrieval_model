@@ -2,7 +2,7 @@ import os
 from typing import List, Dict, Any, Optional
 import numpy as np
 import logging
-from models import EmbeddingModel
+from src.models import EmbeddingModel
 
 # Try to import vector database libraries
 try:

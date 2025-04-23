@@ -21,7 +21,8 @@ class CVProcessingPipeline:
                 config: Optional[Dict[str, Any]] = None, 
                 embedding_model_type: str = "sentence_transformer",
                 vector_store_type: str = "chroma",
-                use_classifier: bool = False):
+                use_classifier: bool = False,
+                layout_model_name: str = "microsoft/layoutlmv3-base"):
         """
         Initialize the CV processing pipeline
         
@@ -30,6 +31,7 @@ class CVProcessingPipeline:
             embedding_model_type: Type of embedding model to use
             vector_store_type: Type of vector store to use
             use_classifier: Whether to use section classifier
+            layout_model_name: Name of the LayoutLM model to use (passed to chunker)
         """
         self.config = config or {}
         
@@ -37,12 +39,21 @@ class CVProcessingPipeline:
         self.output_dir = self.config.get("output_directory", "output")
         os.makedirs(self.output_dir, exist_ok=True)
         
-        # Initialize chunker
-        logger.info("Initializing resume chunker")
-        self.chunker = ResumeChunker()
+        # Initialize chunker with the layout-aware capabilities
+        logger.info(f"Initializing resume chunker with layout model: {layout_model_name}")
+        self.chunker = ResumeChunker(
+            model_name=layout_model_name or self.config.get("layout_model_name", "microsoft/layoutlmv3-base")
+        )
         
         # Initialize embedding model
-        model_name = self.config.get("embedding_model", "all-MiniLM-L6-v2")
+        # Determine model name based on embedding model type
+        if embedding_model_type == "huggingface_api":
+            model_name = self.config.get("embedding_model_bge", self.config.get("embedding_model", "BAAI/bge-large-en-v1.5"))
+        elif embedding_model_type == "custom":
+            model_name = self.config.get("embedding_model_e5large", self.config.get("embedding_model", "intfloat/e5-large-v2"))
+        else:  # sentence_transformer
+            model_name = self.config.get("embedding_model", "all-MiniLM-L6-v2")
+        
         logger.info(f"Initializing embedding model: {embedding_model_type} - {model_name}")
         self.embedding_model = create_embedding_model(
             model_type=embedding_model_type,
@@ -80,62 +91,71 @@ class CVProcessingPipeline:
         """
         logger.info(f"Processing PDF: {pdf_path}")
         
-        # 1. Extract chunks from PDF
-        chunks_data = self.chunker.process_pdf(pdf_path)
-        
-        # 2. Extract hierarchical and flat chunks
-        hierarchical_chunks = chunks_data["hierarchical_chunks"]
-        flat_chunks = chunks_data["flat_chunks"]
-        
-        # 3. Add chunks to vector store if needed
-        if self.config.get("populate_vector_store", True):
-            logger.info(f"Adding {len(flat_chunks)} chunks to vector store")
-            self.vector_store.add_documents(flat_chunks)
-        
-        # 4. Classify sections if needed
-        if self.use_classifier:
-            logger.info("Classifying sections")
-            for chunk in flat_chunks:
-                if chunk["metadata"]["type"] == "section":
-                    predicted_section = self.classifier.predict_section(chunk["text"])
-                    chunk["metadata"]["classified_heading"] = predicted_section
-        
-        # 5. Generate structured output JSON
-        output_json = chunks_data["output_json"]
-        
-        # 6. Extract contact information from summary or first section
-        contact_info = {}
-        summary_chunks = [c for c in flat_chunks if 
-                        c["metadata"].get("normalized_heading") in ["Summary", "Contact", "Other"]]
-        
-        if summary_chunks:
-            combined_text = " ".join([c["text"] for c in summary_chunks])
-            contact_info = extract_contact_info(combined_text)
-        
-        # 7. Include contact info in output
-        if contact_info:
-            output_json["Contact"] = contact_info
-        
-        # 8. Save results if needed
-        result = {
-            "hierarchical_chunks": hierarchical_chunks,
-            "flat_chunks": flat_chunks,
-            "structured_data": output_json,
-            "metadata": {
-                "source_file": os.path.basename(pdf_path),
-                "processing_time": None  # Could add timing info here
+        try:
+            # Process the PDF using the chunker
+            result = self.chunker.process_pdf(pdf_path)
+            
+            # Extract hierarchical and flat chunks
+            hierarchical_chunks = result["hierarchical_chunks"]
+            flat_chunks = result["flat_chunks"]
+            structured_data = result["output_json"]
+            
+            # Add chunks to vector store if needed
+            if self.config.get("populate_vector_store", True):
+                logger.info(f"Adding {len(flat_chunks)} chunks to vector store")
+                self.vector_store.add_documents(flat_chunks)
+            
+            # Classify sections if needed
+            if self.use_classifier:
+                logger.info("Classifying sections")
+                for chunk in flat_chunks:
+                    if chunk["metadata"]["type"] == "section":
+                        predicted_section = self.classifier.predict_section(chunk["text"])
+                        chunk["metadata"]["classified_heading"] = predicted_section
+            
+            # Prepare the result
+            result = {
+                "hierarchical_chunks": hierarchical_chunks,
+                "flat_chunks": flat_chunks,
+                "structured_data": structured_data,
+                "metadata": {
+                    "source_file": os.path.basename(pdf_path),
+                    "processing_time": None  # Could add timing info here
+                }
             }
-        }
-        
-        if save_output:
-            output_file = os.path.join(
-                self.output_dir, 
-                f"{Path(pdf_path).stem}_processed.json"
-            )
-            save_json(output_json, output_file)
-            logger.info(f"Saved structured output to {output_file}")
-        
-        return result
+            
+            # Save results if needed
+            if save_output:
+                output_file = os.path.join(
+                    self.output_dir, 
+                    f"{Path(pdf_path).stem}_processed.json"
+                )
+                save_json(structured_data, output_file)
+                logger.info(f"Saved structured output to {output_file}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error processing {pdf_path}: {str(e)}")
+            
+            # Return an empty but correctly structured result to avoid downstream errors
+            return {
+                "hierarchical_chunks": {},
+                "flat_chunks": [],
+                "structured_data": {
+                    "personalInfo": {},
+                    "experience": [],
+                    "education": [],
+                    "skills": [],
+                    "projects": [],
+                    "summary": ""
+                },
+                "metadata": {
+                    "source_file": os.path.basename(pdf_path),
+                    "processing_time": None,
+                    "error": str(e)
+                }
+            }
     
     def process_directory(self, directory_path: str) -> List[Dict[str, Any]]:
         """
