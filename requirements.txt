@@ -45,3 +45,15 @@ opencv-python>=4.5.5
 pytesseract>=0.3.10
 # If installing on Linux, also run:
 # apt-get install tesseract-ocr libtesseract-dev
+
+langchain
+langchain-community
+langchain-google-genai
+pypdf
+playwright
+beautifulsoup4
+google-generativeai
+sentence-transformers
+chromadb
+python-dotenv
+google-adk
